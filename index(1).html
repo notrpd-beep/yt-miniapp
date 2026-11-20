@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YouTube Search</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body { margin: 0; font-family: sans-serif; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); }
+  #bar { display: flex; gap: 8px; padding: 12px; position: sticky; top: 0; z-index: 10; background: var(--tg-theme-bg-color, #fff); }
+  #q { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #8888; font-size: 16px; background: var(--tg-theme-secondary-bg-color, #f4f4f5); color: var(--tg-theme-text-color, #000); }
+  button { padding: 10px 16px; border: 0; border-radius: 8px; background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); font-size: 16px; cursor: pointer; }
+  #player { display: none; padding: 0 12px 12px; }
+  #player iframe { width: 100%; aspect-ratio: 16/9; border: 0; border-radius: 8px; }
+  .item { display: flex; gap: 10px; padding: 10px 12px; cursor: pointer; align-items: center; }
+  .item:hover { background: var(--tg-theme-secondary-bg-color, rgba(0, 0, 0, 0.04)); }
+  .item img { width: 140px; border-radius: 8px; flex-shrink: 0; }
+  .item div { font-size: 14px; line-height: 1.4; }
+  #msg { padding: 12px; color: var(--tg-theme-hint-color, #888); }
+</style>
+</head>
+<body>
+<div id="bar">
+  <input id="q" placeholder="ابحث في يوتيوب" />
+  <button id="go">بحث</button>
+</div>
+<div id="player"></div>
+<div id="msg"></div>
+<div id="list"></div>
+
+<script>
+  // ضع مفتاح YouTube Data API v3 هنا بعد تفعيل الخدمة في Google Cloud Console
+  const API_KEY = "ضع_مفتاح_API_هنا";
+
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+
+  const q = document.getElementById("q");
+  const list = document.getElementById("list");
+  const msg = document.getElementById("msg");
+  const player = document.getElementById("player");
+
+  async function search(customTerm = null) {
+    const term = (customTerm ?? q.value).trim();
+    if (!term) {
+      msg.textContent = "اكتب شي للبحث";
+      return;
+    }
+
+    if (!API_KEY || API_KEY === "ضع_مفتاح_API_هنا" || API_KEY === "YOUR_YOUTUBE_API_KEY") {
+      msg.textContent = "يرجى وضع مفتاح YouTube API صحيح داخل ملف index.html أولاً.";
+      return;
+    }
+
+    msg.textContent = "جاري البحث...";
+    list.innerHTML = "";
+
+    try {
+      const url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=15&q="
+        + encodeURIComponent(term) + "&key=" + encodeURIComponent(API_KEY);
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) {
+        msg.textContent = "خطأ من يوتيوب: " + (data.error?.message || res.status);
+        return;
+      }
+
+      const items = Array.isArray(data.items) ? data.items : [];
+      msg.textContent = items.length ? "" : "ما كو نتائج";
+
+      for (const it of items) {
+        const videoId = it.id?.videoId;
+        const thumbUrl = it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url;
+        const titleText = it.snippet?.title || "بدون عنوان";
+        if (!videoId || !thumbUrl) continue;
+
+        const div = document.createElement("div");
+        div.className = "item";
+
+        const img = document.createElement("img");
+        img.src = thumbUrl;
+        img.alt = titleText;
+
+        const title = document.createElement("div");
+        title.textContent = titleText;
+
+        div.append(img, title);
+        div.onclick = () => play(videoId);
+        list.appendChild(div);
+      }
+    } catch (e) {
+      msg.textContent = "تعذر الاتصال، حاول مرة ثانية";
+    }
+  }
+
+  function play(id) {
+    if (!id) return;
+    player.style.display = "block";
+    player.innerHTML = '<iframe src="https://www.youtube.com/embed/' + encodeURIComponent(id) +
+      '?autoplay=1&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>';
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  document.getElementById("go").onclick = () => search();
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") search();
+  });
+
+  // دعم الفتح المباشر بفيديو (?v=ID) أو كلمة بحث (?q=TEXT) من رابط الـ Mini App
+  const params = new URLSearchParams(window.location.search);
+  const initialVideo = params.get("v");
+  const initialQuery = params.get("q");
+
+  if (initialVideo) {
+    play(initialVideo);
+  }
+  if (initialQuery) {
+    q.value = initialQuery;
+    search(initialQuery);
+  }
+</script>
+</body>
+</html>
